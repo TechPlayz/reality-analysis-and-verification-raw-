@@ -17,13 +17,12 @@
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
-  min-height: 100%;
+html {
+  height: 100%;
 }
 
 body {
+  height: 100%;
   margin: 0;
   font-family: var(--font-body);
   color: var(--ink);
@@ -31,8 +30,13 @@ body {
     radial-gradient(circle at 8% 10%, rgba(127, 205, 255, 0.42), transparent 34%),
     radial-gradient(circle at 85% 15%, rgba(255, 215, 155, 0.4), transparent 30%),
     linear-gradient(175deg, #f5faff 0%, var(--canvas) 100%);
+  display: flex;
+  flex-direction: column;
 }
 
 #root {
+  flex: 1;
   padding: 0.9rem 0;
+  display: flex;
+  flex-direction: column;
 }
