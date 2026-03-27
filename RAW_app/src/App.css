@@ -291,6 +291,24 @@
   padding: 0.42rem 0.82rem;
 }
 
+.verdict-badge.verdict-ai {
+  color: #8c1f18;
+  background: #ffe9e5;
+  border-color: #ffc6bd;
+}
+
+.verdict-badge.verdict-human {
+  color: #1f5f33;
+  background: #eafbef;
+  border-color: #baeac5;
+}
+
+.verdict-badge.verdict-uncertain {
+  color: #7a4b0e;
+  background: #fff6e7;
+  border-color: #ffe0ad;
+}
+
 .verdict-badge.ai-likely {
   color: #892217;
   background: #ffece8;

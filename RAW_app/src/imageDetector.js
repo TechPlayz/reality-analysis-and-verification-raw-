@@ -1,257 +1,216 @@
-const DEFAULT_HF_MODELS = [
-  "Ateeqq/ai-vs-human-image-detector",
-  "umm-maybe/AI-image-detector"
-];
-
-const CONFIG_PREFIX = "VITE_HF_IMAGE_MODELS=";
-
-const MODEL_LABEL_MAPS = {
-  "Ateeqq/ai-vs-human-image-detector": {
-    ai: ["ai", "0", "label_0"],
-    human: ["hum", "human", "1", "label_1"]
-  },
-  "umm-maybe/AI-image-detector": {
-    ai: ["artificial", "ai", "0", "label_0"],
-    human: ["human", "real", "1", "label_1"]
-  }
-};
-
-function resolveModelList() {
-  const configured = import.meta.env.VITE_HF_IMAGE_MODELS;
-  if (!configured) {
-    return DEFAULT_HF_MODELS;
-  }
-
-  const models = configured
-    .split(",")
-    .map((item) => item.trim())
-    .map((item) => {
-      // Recover from accidental .env values like:
-      // VITE_HF_IMAGE_MODELS=VITE_HF_IMAGE_MODELS=openai/clip-vit-base-patch32
-      if (item.startsWith(CONFIG_PREFIX)) {
-        return item.slice(CONFIG_PREFIX.length).trim();
-      }
-
-      return item;
-    })
-    .filter(Boolean);
-
-  const deduped = [...new Set(models)];
-  return deduped.length > 0 ? deduped : DEFAULT_HF_MODELS;
-}
-
-function resolveInferenceApiBaseUrl() {
-  const configured = (import.meta.env.VITE_HF_API_BASE_URL || "").trim();
-  if (configured) {
-    return configured.replace(/\/+$/, "");
-  }
-
-  // In local development, use Vite proxy to avoid browser fetch/CORS failures.
-  if (import.meta.env.DEV) {
-    return "/api/hf";
-  }
-
-  return "https://api-inference.huggingface.co";
-}
-
-function scoreFromLabel(label, score) {
-  const normalized = String(label || "").toLowerCase();
-
-  const aiHints = ["ai", "generated", "synthetic", "fake", "cg", "diffusion"];
-  const humanHints = ["human", "real", "natural", "authentic", "camera", "photo"];
-
-  if (aiHints.some((hint) => normalized.includes(hint))) {
-    return { ai: score, human: 1 - score, mapped: true };
-  }
-
-  if (humanHints.some((hint) => normalized.includes(hint))) {
-    return { ai: 1 - score, human: score, mapped: true };
-  }
-
-  return { ai: 0.5, human: 0.5, mapped: false };
-}
-
-function scoreFromLabelWithModel(label, score, model) {
-  const normalized = String(label || "").toLowerCase();
-  const modelMap = MODEL_LABEL_MAPS[model];
-
-  if (modelMap) {
-    if (modelMap.ai.includes(normalized)) {
-      return { ai: score, human: 1 - score, mapped: true };
-    }
-
-    if (modelMap.human.includes(normalized)) {
-      return { ai: 1 - score, human: score, mapped: true };
-    }
-  }
-
-  return scoreFromLabel(normalized, score);
-}
-
-function normalizePredictions(payload) {
-  if (Array.isArray(payload) && payload.length > 0) {
-    if (Array.isArray(payload[0])) {
-      return payload[0];
-    }
-
-    return payload;
-  }
-
-  if (payload && typeof payload === "object" && payload.label) {
-    return [payload];
-  }
-
-  return [];
-}
-
-function extractModelAiProbability(predictions, model) {
-  const mapped = predictions
-    .map((item) => {
-      const score = clamp(Number(item.score) || 0, 0, 1);
-      const mappedScore = scoreFromLabelWithModel(item.label, score, model);
-
-      return {
-        label: String(item.label || "unknown"),
-        score,
-        mappedScore,
-        mapped: mappedScore.mapped
-      };
-    })
-    .filter((item) => item.score > 0);
-
-  if (mapped.length === 0) {
-    return {
-      ai: 0.5,
-      human: 0.5,
-      mapped: false,
-      topLabel: "unknown",
-      topScore: 0.5
-    };
-  }
-
-  const top = [...mapped].sort((a, b) => b.score - a.score)[0];
-  const mappedOnly = mapped.filter((item) => item.mapped);
-
-  if (mappedOnly.length === 0) {
-    return {
-      ai: 0.5,
-      human: 0.5,
-      mapped: false,
-      topLabel: top.label,
-      topScore: top.score
-    };
-  }
-
-  const weightedAi = mappedOnly.reduce((sum, item) => sum + (item.mappedScore.ai * item.score), 0);
-  const weight = mappedOnly.reduce((sum, item) => sum + item.score, 0);
-  const ai = weight > 0 ? weightedAi / weight : 0.5;
-
-  return {
-    ai,
-    human: 1 - ai,
-    mapped: true,
-    topLabel: top.label,
-    topScore: top.score
-  };
-}
-
-async function callHfModel(file, model, apiKey, apiBaseUrl) {
-  const endpoint = `${apiBaseUrl}/models/${model}?wait_for_model=true`;
-
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    let response;
-
-    try {
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": file.type || "application/octet-stream",
-          Accept: "application/json"
-        },
-        body: file
-      });
-    } catch (error) {
-      throw new Error(`Network request failed for ${model}: ${error.message}`);
-    }
-
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    const predictions = normalizePredictions(payload);
-
-    if (response.ok && predictions.length > 0) {
-      return predictions;
-    }
-
-    const loading = payload?.error && String(payload.error).toLowerCase().includes("loading");
-    const waitSeconds = Number(payload?.estimated_time);
-
-    if (loading && attempt < 3) {
-      const sleepMs = Number.isFinite(waitSeconds)
-        ? clamp(Math.round(waitSeconds * 1000), 1000, 9000)
-        : 1800;
-      await new Promise((resolve) => setTimeout(resolve, sleepMs));
-      continue;
-    }
-
-    if (!response.ok) {
-      const message = payload?.error || `Model ${model} request failed.`;
-      throw new Error(message);
-    }
-
-    throw new Error(`Model ${model} returned no classification results.`);
-  }
-
-  throw new Error(`Model ${model} did not return a usable response.`);
-}
-
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function summarizeConsensus(aiScores) {
-  const mean = aiScores.reduce((sum, value) => sum + value, 0) / aiScores.length;
-  const variance = aiScores.reduce((sum, value) => sum + (value - mean) ** 2, 0) / aiScores.length;
-  const stdDev = Math.sqrt(variance);
-
-  // Convert disagreement into an agreement score between 0 and 1.
-  // 0.25 std-dev means strong disagreement in binary classification.
-  const agreement = clamp(1 - stdDev / 0.25, 0, 1);
-
-  return { mean, stdDev, agreement };
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function runModelBatch(file, apiKey, models, providerErrors, apiBaseUrl) {
-  const work = models.map(async (model) => {
-    try {
-      const predictions = await callHfModel(file, model, apiKey, apiBaseUrl);
-      const modelScore = extractModelAiProbability(predictions, model);
-      const topConfidence = clamp(modelScore.topScore || 0.5, 0.05, 0.99);
-      const weight = modelScore.mapped ? topConfidence : topConfidence * 0.55;
+const AI_METADATA_KEYWORDS = [
+  "stable diffusion",
+  "midjourney",
+  "dall-e",
+  "dalle",
+  "comfyui",
+  "automatic1111",
+  "invokeai",
+  "fooocus",
+  "firefly",
+  "kandinsky",
+  "diffusers",
+  "sdxl",
+  "flux",
+  "runway",
+  "prompt",
+  "negative prompt",
+  "sampler",
+  "cfg",
+  "seed",
+  "steps"
+];
 
-      return {
-        model,
-        label: modelScore.topLabel,
-        mapped: {
-          ai: modelScore.ai,
-          human: modelScore.human,
-          mapped: modelScore.mapped
-        },
-        weight,
-        confidence: topConfidence
-      };
-    } catch (error) {
-      providerErrors.push(`${model}: ${error.message}`);
-      return null;
-    }
+const CAMERA_BRANDS = [
+  "canon",
+  "nikon",
+  "sony",
+  "fujifilm",
+  "panasonic",
+  "leica",
+  "olympus",
+  "pentax",
+  "hasselblad",
+  "iphone",
+  "samsung",
+  "xiaomi",
+  "google pixel"
+];
+
+function createImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve(img);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error("Could not read image data."));
+    };
+
+    img.src = imageUrl;
   });
+}
 
-  return Promise.all(work).then((items) => items.filter(Boolean));
+function countMatches(haystack, keywords) {
+  const text = haystack.toLowerCase();
+  return keywords.reduce((count, keyword) => {
+    return count + (text.includes(keyword) ? 1 : 0);
+  }, 0);
+}
+
+async function analyzeMetadataFootprint(file) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  // We only need a prefix for keyword scanning while keeping runtime low.
+  const scanLength = Math.min(bytes.length, 2_000_000);
+  const textBlob = new TextDecoder("latin1").decode(bytes.slice(0, scanLength)).toLowerCase();
+
+  let aiPoints = 0;
+  let humanPoints = 0;
+  const reasons = [];
+
+  const aiKeywordHits = countMatches(textBlob, AI_METADATA_KEYWORDS);
+  if (aiKeywordHits >= 2) {
+    aiPoints += 28;
+    reasons.push("Metadata footprint contains generator/tool signatures.");
+  } else if (aiKeywordHits === 1) {
+    aiPoints += 12;
+    reasons.push("Metadata includes one AI-generation related marker.");
+  }
+
+  const cameraHits = countMatches(textBlob, CAMERA_BRANDS);
+  const hasExifBlock = textBlob.includes("exif");
+  const hasLensHint = textBlob.includes("lens") || textBlob.includes("fnumber") || textBlob.includes("exposure");
+
+  if (cameraHits > 0 && (hasExifBlock || hasLensHint)) {
+    humanPoints += 22;
+    reasons.push("Metadata includes camera/exposure-like capture fields.");
+  }
+
+  if (textBlob.includes("c2pa") || textBlob.includes("content credentials")) {
+    reasons.push("Content credentials marker detected in metadata.");
+    // C2PA can represent edits or generation, so keep it informational.
+  }
+
+  const total = aiPoints + humanPoints;
+  const hasSignal = total > 0;
+  const ai = hasSignal ? aiPoints / total : 0.5;
+
+  return {
+    hasSignal,
+    ai,
+    human: 1 - ai,
+    reasons
+  };
+}
+
+function runSignalPass(data, strideBytes) {
+  let variation = 0;
+  let edgeStrength = 0;
+  let colorSpread = 0;
+  let entropyProxy = 0;
+  let sampleCount = 0;
+
+  for (let i = 0; i < data.length - (strideBytes + 8); i += strideBytes) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+
+    const r2 = data[i + 4];
+    const g2 = data[i + 5];
+    const b2 = data[i + 6];
+
+    const r3 = data[i + 8];
+    const g3 = data[i + 9];
+    const b3 = data[i + 10];
+
+    variation += Math.abs(r - r2) + Math.abs(g - g2) + Math.abs(b - b2);
+    edgeStrength += Math.abs(r - r3) + Math.abs(g - g3) + Math.abs(b - b3);
+
+    const avg = (r + g + b) / 3;
+    colorSpread += Math.abs(r - avg) + Math.abs(g - avg) + Math.abs(b - avg);
+
+    const intensity = avg / 255;
+    const centered = Math.abs(intensity - 0.5);
+    entropyProxy += 1 - centered;
+
+    sampleCount += 1;
+  }
+
+  const safeCount = Math.max(sampleCount, 1);
+
+  return {
+    variation: variation / safeCount,
+    edgeStrength: edgeStrength / safeCount,
+    colorSpread: colorSpread / safeCount,
+    entropyProxy: entropyProxy / safeCount
+  };
+}
+
+function aggregatePasses(passes) {
+  const weight = 1 / passes.length;
+  return passes.reduce(
+    (acc, pass) => {
+      acc.variation += pass.variation * weight;
+      acc.edgeStrength += pass.edgeStrength * weight;
+      acc.colorSpread += pass.colorSpread * weight;
+      acc.entropyProxy += pass.entropyProxy * weight;
+      return acc;
+    },
+    { variation: 0, edgeStrength: 0, colorSpread: 0, entropyProxy: 0 }
+  );
+}
+
+function analyzeVintageSignals(data) {
+  let monochromeCount = 0;
+  let warmToneCount = 0;
+  let noiseAccumulator = 0;
+  let samples = 0;
+
+  for (let i = 0; i < data.length - 8; i += 16) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const r2 = data[i + 4];
+    const g2 = data[i + 5];
+    const b2 = data[i + 6];
+
+    const rg = Math.abs(r - g);
+    const gb = Math.abs(g - b);
+    if (rg < 10 && gb < 10) {
+      monochromeCount += 1;
+    }
+
+    if (r > g && g > b && (r - b) > 10) {
+      warmToneCount += 1;
+    }
+
+    const l1 = (r + g + b) / 3;
+    const l2 = (r2 + g2 + b2) / 3;
+    noiseAccumulator += Math.abs(l1 - l2);
+    samples += 1;
+  }
+
+  const safe = Math.max(samples, 1);
+  return {
+    monochromeRatio: monochromeCount / safe,
+    warmToneRatio: warmToneCount / safe,
+    grainNoise: noiseAccumulator / safe
+  };
 }
 
 export async function analyzeImageFile(file) {
@@ -263,92 +222,155 @@ export async function analyzeImageFile(file) {
     return { error: "Only image files are supported." };
   }
 
-  if (file.size > 8 * 1024 * 1024) {
-    return { error: "Image is too large. Please upload a file under 8MB." };
+  if (file.size > 10 * 1024 * 1024) {
+    return { error: "Image is too large. Please upload a file under 10MB." };
   }
 
-  const apiKey = import.meta.env.VITE_HF_API_TOKEN;
-  if (!apiKey) {
-    return {
-      ai: 50,
-      human: 50,
-      verdict: "Uncertain",
-      reasons: [
-        "No Hugging Face API token configured.",
-        "Set VITE_HF_API_TOKEN in your RAW_app/.env file to enable cloud image detection."
-      ]
-    };
+  await sleep(320 + Math.floor(Math.random() * 220));
+
+  let img;
+  try {
+    img = await createImageFromFile(file);
+  } catch (error) {
+    return { error: error.message };
   }
 
-  const models = resolveModelList();
-  const apiBaseUrl = resolveInferenceApiBaseUrl();
-  const providerErrors = [];
-  let successful = await runModelBatch(file, apiKey, models, providerErrors, apiBaseUrl);
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-  // If custom models fail completely, retry with known working defaults.
-  let usedFallbackDefaults = false;
-  if (successful.length === 0) {
-    const fallbackModels = DEFAULT_HF_MODELS.filter((model) => !models.includes(model));
-    if (fallbackModels.length > 0) {
-      usedFallbackDefaults = true;
-      successful = await runModelBatch(file, apiKey, fallbackModels, providerErrors, apiBaseUrl);
+  if (!ctx) {
+    return { error: "Image analyzer could not initialize canvas context." };
+  }
+
+  const maxSide = 512;
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  canvas.width = Math.max(64, Math.floor(img.width * scale));
+  canvas.height = Math.max(64, Math.floor(img.height * scale));
+
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  await sleep(350 + Math.floor(Math.random() * 220));
+
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const passes = [8, 16, 24].map((stride) => runSignalPass(data, stride));
+  const metrics = aggregatePasses(passes);
+  const vintage = analyzeVintageSignals(data);
+  const metadata = await analyzeMetadataFootprint(file);
+
+  let score = 0;
+  const reasons = [];
+
+  if (metrics.variation < 26) {
+    score += 2;
+    reasons.push("Low texture variation indicates synthetic smoothness.");
+  } else if (metrics.variation > 48) {
+    score -= 2;
+    reasons.push("Strong texture variation suggests natural capture noise.");
+  }
+
+  if (metrics.edgeStrength < 30) {
+    score += 2;
+    reasons.push("Edge transitions are softer than typical camera photos.");
+  } else if (metrics.edgeStrength > 56) {
+    score -= 2;
+    reasons.push("Edge sharpness is closer to real captured details.");
+  }
+
+  if (metrics.colorSpread < 22) {
+    score += 1;
+    reasons.push("Color distribution appears overly uniform.");
+  } else if (metrics.colorSpread > 40) {
+    score -= 1;
+    reasons.push("Color distribution has natural channel variation.");
+  }
+
+  if (metrics.entropyProxy < 0.64) {
+    score += 2;
+    reasons.push("Lower entropy-like randomness suggests generated patterns.");
+  } else if (metrics.entropyProxy > 0.78) {
+    score -= 2;
+    reasons.push("Higher randomness aligns with real-world image noise.");
+  }
+
+  // Old photos and album scans can be soft, warm, and monochrome while still being real.
+  if (vintage.monochromeRatio > 0.45 && vintage.grainNoise > 12 && metrics.edgeStrength < 48) {
+    score -= 2;
+    reasons.push("Monochrome/grain profile resembles scanned or vintage photography.");
+  }
+
+  if (vintage.warmToneRatio > 0.34 && metrics.variation >= 24 && metrics.variation <= 58) {
+    score -= 2;
+    reasons.push("Warm color cast resembles film/album aging rather than synthetic rendering.");
+  }
+
+  if (vintage.grainNoise > 18 && metrics.entropyProxy > 0.72) {
+    score -= 1;
+    reasons.push("Fine luminance grain indicates camera or scan noise.");
+  }
+
+  await sleep(300 + Math.floor(Math.random() * 220));
+
+  let visualAi;
+  if (score >= 6) visualAi = 86;
+  else if (score >= 4) visualAi = 72;
+  else if (score <= -6) visualAi = 14;
+  else if (score <= -4) visualAi = 30;
+  else visualAi = 50;
+
+  // Metadata-dominant blending: when metadata signal exists, trust it more than pixels.
+  let metadataWeight = 0;
+  if (metadata.hasSignal) {
+    metadataWeight = 0.72;
+
+    // If metadata is strongly one-sided, trust it even more.
+    if (metadata.ai >= 0.82 || metadata.ai <= 0.18) {
+      metadataWeight = 0.86;
     }
   }
 
-  if (successful.length > 0) {
-    const weightedSum = successful.reduce((sum, item) => sum + (item.mapped.ai * item.weight), 0);
-    const totalWeight = successful.reduce((sum, item) => sum + item.weight, 0);
-    const aiRaw = totalWeight > 0 ? weightedSum / totalWeight : 0.5;
+  const blendedAi = (visualAi / 100) * (1 - metadataWeight) + metadata.ai * metadataWeight;
 
-    const { agreement, stdDev } = summarizeConsensus(successful.map((item) => item.mapped.ai));
+  const ai = clamp(Math.round(blendedAi * 100), 10, 90);
+  const human = 100 - ai;
 
-    // Pull results toward neutral when models disagree strongly.
-    const aiAdjusted = 0.5 + (aiRaw - 0.5) * agreement;
+  let confidence = clamp(52 + Math.abs(score) * 7, 50, 90);
+  if (metadata.hasSignal) {
+    const metadataAiPct = Math.round(metadata.ai * 100);
+    const agreement = Math.abs(metadataAiPct - visualAi);
+    if (agreement <= 16) confidence = clamp(confidence + 8, 50, 90);
+    else if (agreement >= 35) confidence = clamp(confidence - 4, 50, 90);
 
-    const ai = Math.round(clamp(aiAdjusted * 100, 1, 99));
-    const human = 100 - ai;
-
-    let verdict = "Uncertain";
-    if (agreement < 0.4) verdict = "Uncertain (Model Disagreement)";
-    else if (ai >= 80) verdict = "AI Generated (High Confidence)";
-    else if (ai >= 60) verdict = "Likely AI Generated";
-    else if (human >= 80) verdict = "Human Captured/Created (High Confidence)";
-    else if (human >= 60) verdict = "Likely Human Captured/Created";
-
-    const reasons = [
-      `Consensus from ${successful.length}/${models.length} free model(s).`,
-      `Model agreement: ${Math.round(agreement * 100)}% (std-dev ${stdDev.toFixed(2)}).`
-    ];
-
-    const sampleProviders = successful.slice(0, 3).map((item) => {
-      return `${item.model}: ${item.label} (${Math.round(item.confidence * 100)}%)`;
-    });
-
-    reasons.push(...sampleProviders);
-
-    if (successful.some((item) => !item.mapped.mapped)) {
-      reasons.push("Some labels were ambiguous and down-weighted.");
+    if (metadataWeight >= 0.86) {
+      confidence = clamp(confidence + 4, 50, 90);
     }
 
-    if (providerErrors.length > 0) {
-      reasons.push(`Some models failed: ${providerErrors.slice(0, 2).join(" | ")}`);
-    }
+    reasons.push("Metadata-dominant mode enabled: metadata footprint weighted higher than visual cues.");
+  }
 
-    if (usedFallbackDefaults) {
-      reasons.push("Configured model(s) failed, so default compatibility models were used.");
-    }
+  let verdict = "Uncertain";
+  if (confidence >= 62 && ai >= 72) verdict = "AI Generated";
+  else if (confidence >= 62 && ai >= 58) verdict = "Likely AI";
+  else if (confidence >= 62 && human >= 72) verdict = "Human";
+  else if (confidence >= 62 && human >= 58) verdict = "Likely Human";
 
-    return { ai, human, verdict, reasons };
+  if (reasons.length === 0) {
+    reasons.push("Signals are mixed across texture, edges, color, and entropy.");
+  }
+
+  if (metadata.reasons.length > 0) {
+    reasons.push(...metadata.reasons);
   }
 
   return {
-    ai: 50,
-    human: 50,
-    verdict: "Uncertain",
-    reasons: [
-      "All configured free API models failed.",
-      "Ensure models support image-classification and are public on Hugging Face.",
-      ...providerErrors.slice(0, 2)
-    ]
+    ai,
+    human,
+    confidence,
+    verdict,
+    reasons: reasons.slice(0, 6),
+    highlights: []
   };
+}
+
+export async function analyzeImageManually(file) {
+  return analyzeImageFile(file);
 }

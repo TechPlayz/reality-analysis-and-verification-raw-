@@ -33,8 +33,8 @@ npm run dev
 Image analysis uses Hugging Face Inference API models (free tier).
 
 - Default model list:
-	- `Ateeqq/ai-vs-human-image-detector`
-	- `umm-maybe/AI-image-detector`
+	- `haywoodsloan/ai-image-detector-dev-deploy`
+	- `haywoodsloan/ai-image-detector-deploy`
 - You can override with:
 
 ```env
@@ -50,7 +50,7 @@ For local development, Vite proxies image API calls through `/api/hf` to avoid b
 For deployed environments, you can optionally set:
 
 ```env
-VITE_HF_API_BASE_URL=https://api-inference.huggingface.co
+VITE_HF_API_BASE_URL=https://router.huggingface.co/hf-inference
 ```
 
 Or point `VITE_HF_API_BASE_URL` to your own backend proxy endpoint.

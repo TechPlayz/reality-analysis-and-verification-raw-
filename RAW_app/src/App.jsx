@@ -8,6 +8,7 @@ function App() {
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [textLoading, setTextLoading] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const [imageResult, setImageResult] = useState(null);
@@ -17,17 +18,25 @@ function App() {
   const wordsCount = text.trim() ? text.trim().split(/\s+/).length : 0;
   const charCount = text.length;
 
-  const handleAnalyze = () => {
-    const res = analyzeText(text);
+  const handleAnalyze = async () => {
+    setTextLoading(true);
     setError("");
     setResult(null);
 
-    if (res.error) {
-      setError(res.error);
-      return;
-    }
+    try {
+      const res = await analyzeText(text);
+      if (res.error) {
+        setError(res.error);
+        window.alert(res.error);
+        return;
+      }
 
-    setResult(res);
+      setResult(res);
+    } catch {
+      setError("Text analysis failed. Please try again.");
+    } finally {
+      setTextLoading(false);
+    }
   };
 
   const handleClear = () => {
@@ -35,6 +44,7 @@ function App() {
       setText("");
       setResult(null);
       setError("");
+      setTextLoading(false);
       return;
     }
 
@@ -95,13 +105,21 @@ function App() {
     }
   };
 
-  const isAnalyzeDisabled = !text.trim();
+  const isAnalyzeDisabled = !text.trim() || textLoading;
   const isClearDisabled = activeTab === "text"
-    ? (!text && !result && !error)
+    ? (!text && !result && !error && !textLoading)
     : (!imageFile && !imageResult && !imageError);
-  const verdictClass = result
-    ? result.verdict.toLowerCase().replace(/\s+/g, "-")
-    : "";
+
+  const getVerdictClass = (verdict) => {
+    const normalized = (verdict || "").toLowerCase();
+    if (normalized.includes("uncertain")) return "verdict-uncertain";
+    if (normalized.includes("human")) return "verdict-human";
+    if (normalized.includes("ai")) return "verdict-ai";
+    return "verdict-uncertain";
+  };
+
+  const verdictClass = result ? getVerdictClass(result.verdict) : "";
+  const imageVerdictClass = imageResult ? getVerdictClass(imageResult.verdict) : "";
 
   useEffect(() => {
     return () => {
@@ -164,7 +182,7 @@ function App() {
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !isAnalyzeDisabled) {
-                    handleAnalyze();
+                    void handleAnalyze();
                   }
                 }}
               />
@@ -210,10 +228,10 @@ function App() {
             {activeTab === "text" ? (
               <button
                 className="analyze-button"
-                onClick={handleAnalyze}
+                onClick={() => void handleAnalyze()}
                 disabled={isAnalyzeDisabled}
               >
-                Analyze Text
+                {textLoading ? "Analyzing..." : "Analyze Text"}
               </button>
             ) : (
               <button
@@ -262,7 +280,7 @@ function App() {
                   Verdict: {result.verdict}
                 </p>
                 <p className="confidence-pill">
-                  Confidence: {Math.max(result.ai, result.human)}%
+                  Confidence: {result.confidence ?? Math.max(result.ai, result.human)}%
                 </p>
               </div>
 
@@ -315,11 +333,11 @@ function App() {
           {activeTab === "image" && imageResult && (
             <>
               <div className="verdict-row">
-                <p className="verdict-badge">
+                <p className={`verdict-badge ${imageVerdictClass}`}>
                   Image Verdict: {imageResult.verdict}
                 </p>
                 <p className="confidence-pill">
-                  Confidence: {Math.max(imageResult.ai, imageResult.human)}%
+                  Confidence: {imageResult.confidence ?? Math.max(imageResult.ai, imageResult.human)}%
                 </p>
               </div>
 
@@ -361,7 +379,11 @@ function App() {
           {activeTab === "text" && !result && (
             <div className="empty-result">
               <p className="empty-title">No text result yet</p>
-              <p>Paste text and click Analyze Text to view scoring and reasoning.</p>
+              <p>
+                {textLoading
+                  ? "Analyzing writing signals..."
+                  : "Paste text and click Analyze Text to view scoring and reasoning."}
+              </p>
             </div>
           )}
 
@@ -376,8 +398,7 @@ function App() {
 
       <footer className="app-footer">
         <p>
-          RAW uses heuristic indicators for educational analysis and should be
-          combined with human judgment.
+          This result is based on pattern analysis and may not be 100% accurate.
         </p>
       </footer>
     </main>
