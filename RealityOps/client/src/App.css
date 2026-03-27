@@ -75,12 +75,41 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(87, 146, 104, 0.2);
 }
 
+input[type="file"] {
+  width: 100%;
+  border: 1px solid #c8d5c5;
+  border-radius: 12px;
+  padding: 0.55rem;
+  background: #f7faf6;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 0.6rem;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.42rem 0.7rem;
+  font-weight: 700;
+  background: linear-gradient(130deg, #2e4b35, #568a5e);
+  color: #fff;
+}
+
 .row {
   margin-top: 0.8rem;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
+}
+
+.tabs {
+  margin-top: 0;
+  margin-bottom: 0.7rem;
+}
+
+.active-tab {
+  background: linear-gradient(130deg, #2e4b35, #568a5e);
+  color: #fff;
+  border-color: transparent;
 }
 
 button {
