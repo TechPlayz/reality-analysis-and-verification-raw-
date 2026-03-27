@@ -3,6 +3,8 @@ const DEFAULT_HF_MODELS = [
   "umm-maybe/AI-image-detector"
 ];
 
+const CONFIG_PREFIX = "VITE_HF_IMAGE_MODELS=";
+
 const MODEL_LABEL_MAPS = {
   "Ateeqq/ai-vs-human-image-detector": {
     ai: ["ai", "0", "label_0"],
@@ -23,9 +25,33 @@ function resolveModelList() {
   const models = configured
     .split(",")
     .map((item) => item.trim())
+    .map((item) => {
+      // Recover from accidental .env values like:
+      // VITE_HF_IMAGE_MODELS=VITE_HF_IMAGE_MODELS=openai/clip-vit-base-patch32
+      if (item.startsWith(CONFIG_PREFIX)) {
+        return item.slice(CONFIG_PREFIX.length).trim();
+      }
+
+      return item;
+    })
     .filter(Boolean);
 
-  return models.length > 0 ? models : DEFAULT_HF_MODELS;
+  const deduped = [...new Set(models)];
+  return deduped.length > 0 ? deduped : DEFAULT_HF_MODELS;
+}
+
+function resolveInferenceApiBaseUrl() {
+  const configured = (import.meta.env.VITE_HF_API_BASE_URL || "").trim();
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  // In local development, use Vite proxy to avoid browser fetch/CORS failures.
+  if (import.meta.env.DEV) {
+    return "/api/hf";
+  }
+
+  return "https://api-inference.huggingface.co";
 }
 
 function scoreFromLabel(label, score) {
@@ -129,21 +155,33 @@ function extractModelAiProbability(predictions, model) {
   };
 }
 
-async function callHfModel(file, model, apiKey) {
-  const endpoint = `https://api-inference.huggingface.co/models/${model}?wait_for_model=true`;
+async function callHfModel(file, model, apiKey, apiBaseUrl) {
+  const endpoint = `${apiBaseUrl}/models/${model}?wait_for_model=true`;
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": file.type || "application/octet-stream",
-        Accept: "application/json"
-      },
-      body: file
-    });
+    let response;
 
-    const payload = await response.json();
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": file.type || "application/octet-stream",
+          Accept: "application/json"
+        },
+        body: file
+      });
+    } catch (error) {
+      throw new Error(`Network request failed for ${model}: ${error.message}`);
+    }
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
     const predictions = normalizePredictions(payload);
 
     if (response.ok && predictions.length > 0) {
@@ -188,6 +226,34 @@ function summarizeConsensus(aiScores) {
   return { mean, stdDev, agreement };
 }
 
+function runModelBatch(file, apiKey, models, providerErrors, apiBaseUrl) {
+  const work = models.map(async (model) => {
+    try {
+      const predictions = await callHfModel(file, model, apiKey, apiBaseUrl);
+      const modelScore = extractModelAiProbability(predictions, model);
+      const topConfidence = clamp(modelScore.topScore || 0.5, 0.05, 0.99);
+      const weight = modelScore.mapped ? topConfidence : topConfidence * 0.55;
+
+      return {
+        model,
+        label: modelScore.topLabel,
+        mapped: {
+          ai: modelScore.ai,
+          human: modelScore.human,
+          mapped: modelScore.mapped
+        },
+        weight,
+        confidence: topConfidence
+      };
+    } catch (error) {
+      providerErrors.push(`${model}: ${error.message}`);
+      return null;
+    }
+  });
+
+  return Promise.all(work).then((items) => items.filter(Boolean));
+}
+
 export async function analyzeImageFile(file) {
   if (!file) {
     return { error: "Please upload an image first." };
@@ -215,29 +281,17 @@ export async function analyzeImageFile(file) {
   }
 
   const models = resolveModelList();
+  const apiBaseUrl = resolveInferenceApiBaseUrl();
   const providerErrors = [];
-  const successful = [];
+  let successful = await runModelBatch(file, apiKey, models, providerErrors, apiBaseUrl);
 
-  for (const model of models) {
-    try {
-      const predictions = await callHfModel(file, model, apiKey);
-      const modelScore = extractModelAiProbability(predictions, model);
-      const topConfidence = clamp(modelScore.topScore || 0.5, 0.05, 0.99);
-      const weight = modelScore.mapped ? topConfidence : topConfidence * 0.55;
-
-      successful.push({
-        model,
-        label: modelScore.topLabel,
-        mapped: {
-          ai: modelScore.ai,
-          human: modelScore.human,
-          mapped: modelScore.mapped
-        },
-        weight,
-        confidence: topConfidence
-      });
-    } catch (error) {
-      providerErrors.push(`${model}: ${error.message}`);
+  // If custom models fail completely, retry with known working defaults.
+  let usedFallbackDefaults = false;
+  if (successful.length === 0) {
+    const fallbackModels = DEFAULT_HF_MODELS.filter((model) => !models.includes(model));
+    if (fallbackModels.length > 0) {
+      usedFallbackDefaults = true;
+      successful = await runModelBatch(file, apiKey, fallbackModels, providerErrors, apiBaseUrl);
     }
   }
 
@@ -280,6 +334,10 @@ export async function analyzeImageFile(file) {
       reasons.push(`Some models failed: ${providerErrors.slice(0, 2).join(" | ")}`);
     }
 
+    if (usedFallbackDefaults) {
+      reasons.push("Configured model(s) failed, so default compatibility models were used.");
+    }
+
     return { ai, human, verdict, reasons };
   }
 
@@ -289,6 +347,7 @@ export async function analyzeImageFile(file) {
     verdict: "Uncertain",
     reasons: [
       "All configured free API models failed.",
+      "Ensure models support image-classification and are public on Hugging Face.",
       ...providerErrors.slice(0, 2)
     ]
   };

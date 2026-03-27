@@ -43,6 +43,18 @@ VITE_HF_IMAGE_MODELS=model1,model2,model3
 
 The app tries models in order and uses the first successful response.
 
+Important: use models that support image-classification style outputs (`label` + `score`).
+General embedding models (for example `openai/clip-vit-base-patch32`) are not drop-in compatible with this detector flow.
+
+For local development, Vite proxies image API calls through `/api/hf` to avoid browser fetch/CORS failures.
+For deployed environments, you can optionally set:
+
+```env
+VITE_HF_API_BASE_URL=https://api-inference.huggingface.co
+```
+
+Or point `VITE_HF_API_BASE_URL` to your own backend proxy endpoint.
+
 ## Notes
 
 - Image detection confidence depends on the external model quality and labels.
