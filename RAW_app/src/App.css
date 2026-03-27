@@ -1,0 +1,250 @@
+.app-shell {
+  width: min(920px, 100% - 2rem);
+  margin: 2.75rem auto;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.panel {
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 255, 0.92));
+  box-shadow: 0 16px 40px rgba(13, 24, 46, 0.09);
+  padding: 1.3rem;
+  backdrop-filter: blur(4px);
+  animation: reveal 500ms ease-out;
+}
+
+.panel-header h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(1.6rem, 2.5vw, 2.4rem);
+  line-height: 1.08;
+  color: var(--ink);
+}
+
+.eyebrow {
+  margin: 0 0 0.45rem;
+  color: var(--brand-700);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.subtitle {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  max-width: 58ch;
+}
+
+.input-label {
+  display: inline-block;
+  margin: 1rem 0 0.55rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.analysis-input {
+  width: 100%;
+  min-height: 172px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  padding: 0.9rem 1rem;
+  font: inherit;
+  line-height: 1.5;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  box-sizing: border-box;
+}
+
+.analysis-input::placeholder {
+  color: #8d96a8;
+}
+
+.analysis-input:focus {
+  outline: none;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.14);
+}
+
+.actions {
+  margin-top: 0.95rem;
+}
+
+.analyze-button {
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand-600), var(--brand-500));
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 0.74rem 1.2rem;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  box-shadow: 0 10px 24px rgba(0, 92, 184, 0.3);
+}
+
+.analyze-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.analyze-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.analyze-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.input-hint {
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.error-message {
+  margin: 0.8rem 0 0;
+  color: #b42318;
+  font-weight: 600;
+  background: #fff1f1;
+  border: 1px solid #ffd1d1;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+}
+
+.results-panel h2 {
+  margin: 0 0 1rem;
+  font-family: var(--font-heading);
+  color: var(--ink);
+  font-size: 1.3rem;
+}
+
+.verdict-badge {
+  margin: 0 0 1rem;
+  display: inline-block;
+  font-weight: 700;
+  color: #0a3b78;
+  background: #e9f3ff;
+  border: 1px solid #cde3ff;
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+}
+
+.score-row + .score-row {
+  margin-top: 1rem;
+}
+
+.score-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  color: var(--ink);
+}
+
+.score-head strong {
+  font-family: var(--font-heading);
+}
+
+.bar-track {
+  height: 12px;
+  background: #e5eaf3;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 420ms ease;
+}
+
+.bar-fill.ai {
+  background: linear-gradient(90deg, #f15b5b, #f27f42);
+}
+
+.bar-fill.human {
+  background: linear-gradient(90deg, #11a75c, #23c77d);
+}
+
+.reason-box {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px dashed #cfd8e7;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.reason-box h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.reason-box ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted-strong);
+}
+
+.reason-box li + li {
+  margin-top: 0.32rem;
+}
+
+.no-reasons {
+  margin: 0;
+  color: var(--muted);
+}
+
+.highlight-box {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid #ffd8b6;
+  background: #fff7f0;
+}
+
+.highlight-box h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: #9a4d00;
+}
+
+.highlight-box ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #7e4a16;
+}
+
+.highlight-box li + li {
+  margin-top: 0.35rem;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    width: min(920px, 100% - 1rem);
+    margin: 1.5rem auto;
+    gap: 0.9rem;
+  }
+
+  .panel {
+    border-radius: 14px;
+    padding: 1rem;
+  }
+}

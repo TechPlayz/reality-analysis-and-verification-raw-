@@ -1,7 +1,10 @@
 // RAW - Reality Analysis & Verification
-// Final refined heuristic-based detector (balanced + stable)
+// Clean, structured, and stable detection logic
 
 export function analyzeText(text) {
+  // -----------------------------
+  // 1. EMPTY CHECK
+  // -----------------------------
   if (!text || text.trim().length === 0) {
     return { error: "Please enter some text." };
   }
@@ -9,24 +12,29 @@ export function analyzeText(text) {
   const words = text.trim().split(/\s+/);
 
   // -----------------------------
-  // MIN WORD CHECK (STRICT)
+  // 2. MIN WORD CHECK
   // -----------------------------
   if (words.length < 15) {
     return {
-      error: "Input too short. Please enter at least 15 words for reliable analysis."
+      error: "Minimum 15 words required for reliable analysis."
     };
   }
 
+  // -----------------------------
+  // 3. INITIAL SETUP
+  // -----------------------------
   let aiScore = 0;
   let humanScore = 0;
   let reasons = [];
   let highlights = [];
 
-  const lowerText = text.toLowerCase();
-  const sentences = text.split(/[.!?]/).map(s => s.trim()).filter(Boolean);
+  const sentences = text
+    .split(/[.!?]/)
+    .map(s => s.trim())
+    .filter(Boolean);
 
   // -----------------------------
-  // 1. RANDOM / GIBBERISH DETECTION
+  // 4. GIBBERISH CHECK
   // -----------------------------
   const avgWordLength =
     words.reduce((sum, w) => sum + w.length, 0) / words.length;
@@ -42,7 +50,7 @@ export function analyzeText(text) {
   }
 
   // -----------------------------
-  // 2. CODE DETECTION
+  // 5. CODE DETECTION
   // -----------------------------
   const codePatterns = [";", "{", "}", "()", "=>", "function", "const", "let", "return"];
   const isCode = codePatterns.some(p => text.includes(p));
@@ -61,10 +69,10 @@ export function analyzeText(text) {
 
     if (variance < 12) {
       aiScore += 35;
-      reasons.push("Highly consistent code formatting (AI-like)");
+      reasons.push("Consistent code structure (AI-like)");
     } else {
       humanScore += 30;
-      reasons.push("Irregular human coding style");
+      reasons.push("Irregular coding style (human-like)");
     }
 
     if (text.includes("return") && text.includes("function")) {
@@ -73,44 +81,50 @@ export function analyzeText(text) {
   }
 
   // -----------------------------
-  // 3. HUMAN SIGNALS (STRONG)
+  // 6. HUMAN SIGNALS
   // -----------------------------
   const personalWords = ["i", "my", "me", "we", "our", "us", "bro", "lol"];
   const personalCount = words.filter(w => personalWords.includes(w)).length;
 
   if (personalCount >= 2) {
     humanScore += 45;
-    reasons.push("Strong personal / human tone");
+    reasons.push("Personal human tone detected");
   }
 
   if (text.includes("!!") || text.includes("?") || text.includes("...")) {
     humanScore += 20;
-    reasons.push("Informal human writing style");
+    reasons.push("Informal writing style");
   }
 
   if (words.length < 25) {
-    humanScore += 15;
-    reasons.push("Short casual expression");
+    humanScore += 10;
+    reasons.push("Short casual structure");
   }
 
   // -----------------------------
-  // 4. AI SIGNALS (STRUCTURE)
+  // 7. AI SIGNALS
   // -----------------------------
   const formalWords = [
-    "significantly", "moreover", "therefore",
-    "furthermore", "efficiently", "enhanced",
-    "various", "notably", "overall", "contextually"
+    "significantly",
+    "moreover",
+    "therefore",
+    "furthermore",
+    "efficiently",
+    "enhanced",
+    "various",
+    "overall",
+    "contextually"
   ];
 
   const formalCount = words.filter(w => formalWords.includes(w)).length;
 
   if (formalCount >= 2) {
     aiScore += 35;
-    reasons.push("Formal AI-style vocabulary");
+    reasons.push("Formal AI-like vocabulary");
   }
 
-  // Sentence uniformity
   const lengths = sentences.map(s => s.length);
+
   const avgLen =
     lengths.reduce((a, b) => a + b, 0) / (lengths.length || 1);
 
@@ -120,30 +134,29 @@ export function analyzeText(text) {
 
   if (variance < 18 && sentences.length > 2) {
     aiScore += 30;
-    reasons.push("Highly uniform sentence structure");
+    reasons.push("Uniform sentence structure");
   } else {
     humanScore += 15;
   }
 
-  // Long structured text
   if (words.length > 90) {
     aiScore += 20;
-    reasons.push("Long structured response");
+    reasons.push("Long structured content");
   }
 
   // -----------------------------
-  // 5. REPETITION CHECK
+  // 8. REPETITION CHECK
   // -----------------------------
   const uniqueWords = new Set(words);
   const repetition = words.length - uniqueWords.size;
 
   if (repetition > 20) {
     aiScore += 15;
-    reasons.push("Repetitive phrasing pattern");
+    reasons.push("Repetitive phrasing detected");
   }
 
   // -----------------------------
-  // 6. HIGHLIGHT AI-LIKE SENTENCES
+  // 9. HIGHLIGHT AI SENTENCES
   // -----------------------------
   sentences.forEach(sentence => {
     let s = sentence.toLowerCase();
@@ -161,7 +174,7 @@ export function analyzeText(text) {
   });
 
   // -----------------------------
-  // 7. FINAL CALCULATION (STABLE)
+  // 10. FINAL CALCULATION
   // -----------------------------
   let total = aiScore + humanScore;
 
@@ -178,12 +191,12 @@ export function analyzeText(text) {
   let ai = Math.round((aiScore / total) * 100);
   let human = 100 - ai;
 
-  // Prevent extreme overconfidence
+  // prevent extreme values
   if (ai > 95) ai = 95;
   if (human > 95) human = 95;
 
   // -----------------------------
-  // 8. VERDICT SYSTEM
+  // 11. VERDICT
   // -----------------------------
   let verdict = "Uncertain";
 
