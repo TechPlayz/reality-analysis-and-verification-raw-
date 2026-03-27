@@ -1,16 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Clash+Display:wght@600;700&display=swap');
 
 :root {
-  --ink: #0f172a;
-  --muted: #5f6c82;
-  --muted-strong: #445067;
-  --brand-700: #0154a7;
-  --brand-600: #0064c7;
-  --brand-500: #0071e3;
-  --surface-border: #d9e2f0;
-  --canvas: #eef3fb;
-  --font-body: 'Manrope', 'Segoe UI', sans-serif;
-  --font-heading: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --ink: #101f35;
+  --muted: #5e6f89;
+  --muted-strong: #425574;
+  --brand-700: #0a4f83;
+  --brand-600: #0d629e;
+  --brand-500: #1780c5;
+  --surface-border: #d5e2f1;
+  --canvas: #eaf2fb;
+  --font-body: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  --font-heading: 'Clash Display', 'Trebuchet MS', sans-serif;
 }
 
 * {
@@ -28,9 +28,9 @@ body {
   font-family: var(--font-body);
   color: var(--ink);
   background:
-    radial-gradient(circle at 12% 10%, rgba(113, 188, 255, 0.45), transparent 37%),
-    radial-gradient(circle at 88% 88%, rgba(255, 176, 117, 0.36), transparent 35%),
-    linear-gradient(180deg, #f7fafe 0%, var(--canvas) 100%);
+    radial-gradient(circle at 8% 10%, rgba(127, 205, 255, 0.42), transparent 34%),
+    radial-gradient(circle at 85% 15%, rgba(255, 215, 155, 0.4), transparent 30%),
+    linear-gradient(175deg, #f5faff 0%, var(--canvas) 100%);
 }
 
 #root {
