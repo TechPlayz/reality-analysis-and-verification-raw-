@@ -1,16 +1,49 @@
-# React + Vite
+# RAW App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+RAW (Reality Analysis and Verification) analyzes text/code and now also supports image AI-likelihood checks.
 
-Currently, two official plugins are available:
+## Run Locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies:
 
-## React Compiler
+```bash
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. Configure environment variables:
 
-## Expanding the ESLint configuration
+```bash
+cp .env.example .env
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3. Add a free Hugging Face API token in `.env`:
+
+```env
+VITE_HF_API_TOKEN=hf_xxx_your_token_here
+```
+
+4. Start the app:
+
+```bash
+npm run dev
+```
+
+## Free Image Detection API Integration
+
+Image analysis uses Hugging Face Inference API models (free tier).
+
+- Default model list:
+	- `Ateeqq/ai-vs-human-image-detector`
+	- `umm-maybe/AI-image-detector`
+- You can override with:
+
+```env
+VITE_HF_IMAGE_MODELS=model1,model2,model3
+```
+
+The app tries models in order and uses the first successful response.
+
+## Notes
+
+- Image detection confidence depends on the external model quality and labels.
+- If no API token is configured, the UI still works and returns an explicit uncertain result for images.
