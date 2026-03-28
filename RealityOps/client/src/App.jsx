@@ -342,7 +342,7 @@ function App() {
     <main className={`shell ${toneClass}`}>
       <section className="hero">
         <p className="eyebrow">RealityOps</p>
-        <h1>Uncertainty Copilot</h1>
+        <h1>Uncertainty Tester</h1>
         <p>
           Multi-agent system for hallucination risk detection without ground truth,
           with live feedback adaptation.
