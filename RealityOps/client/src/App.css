@@ -106,10 +106,16 @@ input[type="file"]::file-selector-button {
   margin-bottom: 0.7rem;
 }
 
-.active-tab {
-  background: linear-gradient(130deg, #2e4b35, #568a5e);
-  color: #fff;
-  border-color: transparent;
+.tabs .ghost {
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.tabs .ghost.active-tab {
+  background: linear-gradient(130deg, #1f6b36, #2f8f49);
+  color: #ffffff;
+  border-color: #1f6b36;
+  box-shadow: 0 0 0 3px rgba(46, 143, 73, 0.22), 0 8px 16px rgba(25, 103, 50, 0.22);
+  transform: translateY(-1px);
 }
 
 button {
@@ -218,6 +224,12 @@ button:disabled {
 .feedback-box h3 {
   margin: 0 0 0.45rem;
   font-size: 1rem;
+}
+
+.consistency-box p {
+  margin: 0 0 0.45rem;
+  font-size: 0.9rem;
+  color: #4d6352;
 }
 
 .reasons ul,
